@@ -1,0 +1,154 @@
+# Claude Code Prompt — OCR Contact Sheet Tool
+
+## Project Overview
+
+Build a mobile-friendly web app called **SheetScan** that lets me photograph paper contact records, extract structured data using in-browser OCR (Tesseract.js), review and edit the results in a table, then export everything as a single CSV. No backend. No API keys. No external AI. Pure client-side.
+
+The app will be deployed to GitHub Pages and accessed at `ocr.warrjack.com` via a custom domain CNAME.
+
+---
+
+## Stack
+
+- **Vite + React 19 + TypeScript**
+- **Tailwind CSS v4**
+- **Zustand** for state
+- **Tesseract.js** for in-browser OCR
+- **PapaParse** for CSV export
+- **gh-pages** npm package for deployment
+
+---
+
+## Core Features
+
+### 1. Photo Upload Queue
+- A drag-and-drop zone (and tap-to-upload on mobile) that accepts multiple image files at once (JPG, PNG, HEIC if possible)
+- Each uploaded image appears in a queue as a thumbnail with a status badge: `Pending`, `Processing`, `Done`, `Error`
+- User can remove individual items from the queue before processing
+- A single **"Process All"** button kicks off OCR on every queued image sequentially
+
+### 2. OCR Processing (Tesseract.js)
+- Use `Tesseract.js` running entirely in the browser — no server calls
+- Each image is processed one at a time to avoid memory issues on mobile
+- Pre-process images before OCR: convert to greyscale, increase contrast, upscale if small — use a canvas element for this
+- Target data to extract per image:
+  - `FIRST NAME`
+  - `LAST NAME`
+  - `PHONE NUMBER`
+  - `EMAIL`
+- After raw OCR text is returned, apply a parsing layer:
+  - Detect email addresses via regex (`/[\w.+-]+@[\w-]+\.[a-z]{2,}/i`)
+  - Detect phone numbers via regex (handle formats: `(902) 555-1234`, `902-555-1234`, `9025551234`, `+1 902 555 1234`)
+  - For first/last name: split the remaining text lines, use the first non-empty short line (under 40 chars, no numbers) as the name, then split on space for first/last
+- Each processed image produces one row in the results table
+- If parsing confidence is low (Tesseract confidence score < 70), flag that row with a warning icon
+
+### 3. Editable Results Table
+- Live table showing all extracted rows with columns: `#`, `First Name`, `Last Name`, `Phone`, `Email`, `Source Image`, `Status`
+- Every cell in First Name, Last Name, Phone, Email is directly editable inline (click to edit)
+- Rows flagged as low-confidence are highlighted in amber
+- User can delete individual rows
+- Row count summary shown above table: e.g. `14 records — 2 need review`
+
+### 4. CSV Export
+- A prominent **"Export CSV"** button downloads all rows as a single `.csv` file
+- CSV columns: `First Name, Last Name, Phone Number, Email`
+- Filename format: `contacts_YYYY-MM-DD.csv`
+- Use PapaParse for CSV generation
+- Button is disabled and greyed out if the table is empty
+
+### 5. Session Persistence
+- Use `localStorage` to persist the current results table across page refreshes
+- Show a banner on load if previous session data exists: `"You have 12 records from your last session. Continue or start fresh?"`
+- "Start Fresh" clears localStorage and resets state
+
+---
+
+## Design Direction
+
+**Aesthetic: Utilitarian precision — like a scanner app built by someone who actually cares about craft.**
+
+- Dark theme. Near-black background (`#0f0f0f`), off-white text, sharp acid-green accent (`#b8ff57`) for active states, buttons, and progress indicators
+- Font pairing: `DM Mono` for data/table content (monospace feels right for extracted records), `Syne` for headings and UI labels — both available on Google Fonts
+- No rounded corners on cards or buttons — sharp edges, very slight border in a dark grey (`#2a2a2a`)
+- Upload zone: dashed border, subtle animated pulse when idle, solid accent border when dragging
+- Processing state: a thin animated progress bar across the top of each queue item thumbnail
+- Table rows have a very subtle alternating row background, hover state lifts with a faint left accent border in green
+- Mobile-first layout: single column, full-width table that scrolls horizontally if needed
+- Status badges use monospace text in small caps: `PENDING`, `DONE`, `ERROR` — no rounded pill shapes, just a small coloured square dot + label
+- Export button is full-width on mobile, fixed to the bottom of the viewport when there are rows in the table
+
+---
+
+## GitHub Pages Deployment
+
+### Setup steps Claude Code should handle:
+
+1. Configure `vite.config.ts` with `base: '/'` (custom domain, so no subdirectory needed)
+2. Add a `deploy` script to `package.json`:
+   ```json
+   "deploy": "vite build && gh-pages -d dist"
+   ```
+3. After the first deploy, create a `CNAME` file in the `public/` folder containing exactly:
+   ```
+   ocr.warrjack.com
+   ```
+   This ensures GitHub Pages preserves the custom domain on every deploy.
+4. Install `gh-pages` as a dev dependency
+5. Confirm the target GitHub repo name to use in the deploy command — ask me before running the deploy
+
+### DNS setup note (for me to do manually after deploy):
+- In my DNS provider, add a CNAME record: `ocr` → `warrjack.github.io`
+- GitHub Pages will handle the rest once the CNAME file is in place
+
+---
+
+## File Structure
+
+```
+/
+├── public/
+│   └── CNAME                  ← ocr.warrjack.com
+├── src/
+│   ├── components/
+│   │   ├── UploadZone.tsx
+│   │   ├── QueueItem.tsx
+│   │   ├── ResultsTable.tsx
+│   │   ├── EditableCell.tsx
+│   │   └── ExportButton.tsx
+│   ├── store/
+│   │   └── useAppStore.ts     ← Zustand store
+│   ├── lib/
+│   │   ├── ocr.ts             ← Tesseract.js wrapper + image pre-processing
+│   │   └── parse.ts           ← regex parsing layer for name/phone/email
+│   ├── App.tsx
+│   ├── main.tsx
+│   └── index.css
+├── vite.config.ts
+├── tailwind.config.ts
+├── tsconfig.json
+└── package.json
+```
+
+---
+
+## Acceptance Criteria
+
+- [ ] Can upload 10+ images on mobile Safari without crashing
+- [ ] OCR runs entirely client-side — no network requests except loading Tesseract worker from CDN on first use
+- [ ] Extracted data appears in editable table within ~5 seconds per image on a mid-range phone
+- [ ] All four fields (first name, last name, phone, email) are correctly parsed from a clean printed table
+- [ ] CSV exports with correct column headers and all rows
+- [ ] CNAME file is present in `dist/` after build
+- [ ] Previous session data survives a page refresh
+- [ ] App is fully usable on a 390px wide mobile screen
+
+---
+
+## Notes
+
+- Do not use any AI API, LLM, or external processing service — OCR must be 100% Tesseract.js in the browser
+- Do not add authentication of any kind
+- Keep dependencies minimal — only what's listed above
+- Ask before running `npm run deploy` — I need to confirm the GitHub repo name first
+- If Tesseract.js has issues with HEIC format, skip it and note it in a comment; JPG and PNG are the priority
